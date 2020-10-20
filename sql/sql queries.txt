@@ -1,0 +1,36 @@
+#cte:
+
+WITH   CommentCTE
+AS     (SELECT TOP (10000) [admComment]
+        FROM [dbo].[Order] 
+        where [admComment] IS NOT NULL AND LEN([admComment]) > 0)
+
+SELECT DISTINCT admComment,
+        LEN(admComment) as 'comment len'
+FROM  CommentCTE
+   order by 'comment len' DESC
+
+
+
+
+
+# subquery:
+
+
+SELECT  c.admComment, LEN(c.admComment) as 'comment len'
+FROM  (SELECT TOP (10000) [admComment]
+        FROM [dbo].[Order] 
+        where [admComment] IS NOT NULL AND LEN([admComment]) > 0) as c
+order by 'comment len' DESC
+
+
+
+
+
+#row number
+
+SELECT  c.admComment, LEN(c.admComment) as 'comment len',  ROW_NUMBER() OVER(ORDER BY c.admComment) AS num
+FROM  (SELECT TOP (100000) [admComment]
+        FROM [dbo].[Order] 
+        where [admComment] IS NOT NULL AND LEN([admComment]) > 0) as c
+order by 'comment len' DESC

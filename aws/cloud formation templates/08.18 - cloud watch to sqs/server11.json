@@ -1,0 +1,161 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "stack with test queues for snoopy api",
+	"Parameters": {		    
+	   "EnvironmentName" : { "Type" : "String" },
+	   "Tenant" : { "Type" : "String" },
+	   "FeatureName" : { "Type" : "String" },
+	   "TargetVersion" : { "Type" : "String" }	  	 
+	},
+	"Resources": {		
+		"ScheduledJobsRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Statement": [{
+						"Action": "sts:AssumeRole",
+						"Effect": "Allow",
+						"Principal": {
+							"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+						}
+					}],
+					"Version": "2012-10-17"
+				}
+			}
+		},
+		"GetSotiDataJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": { "Fn::Join" : [  "-", [ { "Ref" : "Tenant" },{ "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, "triggergetsotidatajob" ] ] }
+			}
+		},
+		"CleanRedundantDeviceConnectionInfosJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": { "Fn::Join" : [  "-", [ { "Ref" : "Tenant" }, { "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, "triggercleanredundantdeviceconnectioninfosjob" ] ] }
+			}
+		},
+		"GetSimProDataJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": { "Fn::Join" : [  "-", [ { "Ref" : "Tenant" }, { "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, "triggergetsimprodatajob" ] ] }
+			}
+		},
+		"GetSotiDataJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule GetSotiDataJob",
+				"Name": "GetSotiDataJobRule",
+				"ScheduleExpression": "rate(1 minute)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["GetSotiDataJobQueue", "Arn"]
+					},
+					"Id": "GetSotiDataJobRuleId",
+					"Input": { "Fn::Join" : [  "\"", [ "{  \"Subject\" : \"TriggerGetSotiDataJob\", \"Message\": {\"Tenant\":", { "Ref" : "Tenant" }, ",\"RaisingComponent\":", { "Ref" : "FeatureName" }, ",\"Version\":", { "Ref" : "TargetVersion" }, ",\"QueueUrl\":", { "Ref" : "GetSotiDataJobQueue" }, "}}" ] ] }
+				}]
+			}
+		},
+		"CleanRedundantDeviceConnectionInfosJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule CleanRedundantDeviceConnectionInfosJob",
+				"Name": "CleanRedundantDeviceConnectionInfosJobRule",
+				"ScheduleExpression": "rate(1 minute)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["CleanRedundantDeviceConnectionInfosJobQueue", "Arn"]
+					},
+					"Id": "CleanRedundantDeviceConnectionInfosJobRuleId",
+					"Input": { "Fn::Join" : [  "\"", [ "{  \"Subject\" : \"TriggerCleanRedundantDeviceConnectionInfosJob\", \"Message\": {\"Tenant\":", { "Ref" : "Tenant" }, ",\"RaisingComponent\":", { "Ref" : "FeatureName" }, ",\"Version\":", { "Ref" : "TargetVersion" }, ",\"QueueUrl\":", { "Ref" : "CleanRedundantDeviceConnectionInfosJobQueue" }, "}}" ] ] }
+				}]
+			}
+		},
+		"GetSimProDataJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule GetSimProDataJob",
+				"Name": "GetSimProDataJobRule",
+				"ScheduleExpression": "rate(1 minute)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["GetSimProDataJobQueue", "Arn"]
+					},
+					"Id": "GetSimProDataJobRuleId",
+					"Input": { "Fn::Join" : [  "\"", [ "{  \"Subject\" : \"TriggerGetSimProDataJob\", \"Message\": {\"Tenant\":", { "Ref" : "Tenant" }, ",\"RaisingComponent\":", { "Ref" : "FeatureName" }, ",\"Version\":", { "Ref" : "TargetVersion" }, ",\"QueueUrl\":", { "Ref" : "GetSimProDataJobQueue" }, "}}" ] ] }
+				}]
+			}
+		},
+		"ScheduledJobsQueuePolicy": {
+			"DependsOn": [
+				"GetSotiDataJobQueue", "CleanRedundantDeviceConnectionInfosJobQueue", "GetSimProDataJobQueue",
+				"GetSotiDataJobRule", "CleanRedundantDeviceConnectionInfosJobRule", "GetSimProDataJobRule"
+			],
+			"Type": "AWS::SQS::QueuePolicy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Id": "ScheduledJobsQueuePolicy",
+					"Statement": [
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["GetSotiDataJobQueue", "Arn"]
+							}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["CleanRedundantDeviceConnectionInfosJobQueue", "Arn"]
+							}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["GetSimProDataJobQueue", "Arn"]
+							}
+						}
+					]
+				},								
+				"Queues": [
+					{
+						"Ref": "GetSotiDataJobQueue"
+					},
+					{
+						"Ref": "CleanRedundantDeviceConnectionInfosJobQueue"
+					},
+					{
+						"Ref": "GetSimProDataJobQueue"
+					}
+				]
+			}
+		}
+	},
+	"Outputs": {
+		
+	}
+}

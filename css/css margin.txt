@@ -1,0 +1,33 @@
+margin: 25px 50px 75px 100px;
+
+top margin is 25px
+right margin is 50px
+bottom margin is 75px
+left margin is 100px
+
+Example
+
+p {
+    margin: 25px 50px 75px 100px;
+}
+
+
+// temp - todo - 
+
+
+
+border: 5px solid red;
+
+
+
+
+vs format code:
+
+To format a selection: Ctrl+K, Ctrl+F
+
+To format a document: Ctrl+K, Ctrl+D
+
+
+
+
+JSON.stringify(action.payload.data)

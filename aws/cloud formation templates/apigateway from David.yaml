@@ -1,0 +1,126 @@
+# vim: set ts=2 sw=2 et:
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: |
+  Generic proxy+ API Gateway integration
+  Author: David Goehrig <goehd@amazon.lu>
+
+Resources:
+  ProxyFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - 
+          PolicyName: !Sub "${AWS::StackName}ProxyFunctionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogStreams"
+                Resource:
+                  - "arn:aws:logs:*:*:*"
+
+  ProxyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Description: "Proxy a request function"
+      Code:
+        ZipFile: |
+          'use strict'
+          const aws = require('aws-sdk')
+          aws.config.update({ region: process.env.AWS_REGION })
+          exports.handler = function(event,context,callback) { 
+            console.log("Event", JSON.stringify(event))
+            callback(null,{ "statusCode": 200, "headers": {}, body: JSON.stringify({"hello":"world"}) })
+          }
+      Role: !GetAtt ProxyFunctionRole.Arn
+      MemorySize: 256
+      Handler: index.handler
+      Runtime: nodejs8.10
+      Timeout: 300
+      Environment:
+        Variables:
+          FOO: BAR
+
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - 
+          PolicyName: !Sub "${AWS::StackName}GatewayPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt ProxyFunction.Arn
+
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Description: A rest api for handling requests
+      Body:
+        swagger: "2.0"
+        info:
+          title: "Generic API"
+        basePath: "/prod"
+        schemes:
+          - "https"
+        paths:
+          "/{proxy+}":
+            "x-amazon-apigateway-any-method":
+              produces:
+                - "application/json"
+              parameters:
+                - 
+                  name: proxy
+                  in: path
+                  required: true
+                  type: string
+              responses:
+                '200':
+                  description: 'Device Registered'
+              "x-amazon-apigateway-integration":
+                credentials: !GetAtt ApiGatewayRole.Arn
+                responses:
+                  default:
+                    statusCode: "200"
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ProxyFunction.Arn}/invocations"
+                passthroughBehavior: "when_no_match"
+                httpMethod: "POST"
+                type: aws_proxy
+
+  ApiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    Properties:
+      RestApiId: !Ref ApiGateway
+      Description: "Production"
+      StageName: "prod"

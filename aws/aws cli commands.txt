@@ -1,0 +1,31 @@
+aws cloudformation validate-template --template-body file://C:\code\AwsIotPoc\src\AwsIotPoc\AwsIotPoc.IotCoreApiGateway\deploy\IotCoreApiGatewayCF.yaml
+
+
+
+
+
+# lambda package:
+
+
+dotnet lambda package --region eu-west-1 -c 'Release' -f 'netcoreapp2.1' -o "archive1.zip"
+
+
+
+
+cloudFormation get putput value:
+
+aws cloudformation --region eu-west-1 describe-stacks --stack-name "jediWebapiForIotCore" --query "Stacks[0].Outputs[0].OutputValue"
+
+
+aws cloudformation --region eu-west-1 describe-stacks --stack-name "jediWebapiForIotCore" --query "Stacks[0].Outputs[?OutputKey==`ApiURL` || OutputKey==`ParamTwo`].OutputValue" --output text
+
+
+
+
+
+
+
+
+# serverless
+
+serverless deploy --function iotApi

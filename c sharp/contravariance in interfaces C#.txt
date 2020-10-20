@@ -1,0 +1,20 @@
+	interface MyInterface<out T>
+        {
+            T Test();
+        }
+
+        class MyInterfaceImplementation<T> : MyInterface<T>
+        {
+            public T Test()
+            {
+                return default(T);
+            }
+        }
+
+        public void Test()
+        {
+            MyInterface<string> a = new MyInterfaceImplementation<string>();
+
+	    // contravariance - without `out` keyword in interface declaration this would be impossible
+            MyInterface<object> b = a;
+        }

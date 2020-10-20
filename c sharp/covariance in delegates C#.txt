@@ -1,0 +1,35 @@
+namespace Jedi.DeviceDirectory.UnitTests.AwsLambdaFunctions
+{
+    delegate Class1 A(Class2 param);
+
+    class Class1
+    {
+    }
+
+    class Class2 : Class1
+    {
+    }
+
+    class MyClass
+    {
+        public Class1 Func1(Class2 c)
+        {
+            return new Class1();
+        }
+
+        public Class1 Func2(Class1 c)
+        {
+            return new Class1();
+        }
+
+        public void Test()
+        {
+	    // covariance - Func2 takes Class1 param, but delegate A requires Class2 param
+            A deleg = Func2;
+	   
+            deleg(new Class2());
+
+            Func2(new Class1());
+        }
+    }
+}

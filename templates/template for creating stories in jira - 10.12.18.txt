@@ -1,0 +1,15 @@
+h4. User Story
+
+h4. Background
+
+h4. Scenarios
+
+h4. Questions
+
+h4. Acceptance Criteria
+
+h4. Metrics
+
+h4. Assumptions
+
+h4. Notes

@@ -1,0 +1,5 @@
+git log --graph --decorate --pretty=oneline --abbrev-commit
+
+git reset --hard <commit name> 
+
+git push -f

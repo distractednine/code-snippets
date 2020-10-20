@@ -1,0 +1,22 @@
+git remote -v
+
+git remote add origin https://github.je-labs.com/GlobalDevicePlatform/SnoopyApi.git
+
+git remote remove origin
+
+
+after changes:
+
+git branch --set-upstream-to=origin/master master
+
+
+
+#get origin:
+
+git config --get remote.origin.url
+
+
+
+# set origin:
+
+git remote set-url origin https://github.je-labs.com/restaurant-background-services/legacyordersync.git

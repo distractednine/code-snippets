@@ -1,0 +1,17 @@
+1) create `reader` consumer geoup in IoT hub `built-in endpoints` tab
+
+2) IoT hub: in  `Message routing` tab add `events` route that sends DeviceMessages to `events` endpoint
+
+3) in `AzureIotHubPoc.MessageProcessor` config.json put `IotHubName` from IoT hub `built-in endpoints` tab `event-hub compatible name`
+
+4) in `AzureIotHubPoc.MessageProcessor` config.json put `IotHubConnectionString` from IoT hub `built-in endpoints` tab `event-hub compatible endpoint`
+
+5) in `AzureIotHubPoc.MessageProcessor` config.json put `DeviceServiceConnectionString` from IoT hub `shared access policies` tab `service` connection string
+
+6) in `AzureIotHubPoc.MessageProcessor` config.json set `ConsumerGroupName` to `reader`
+
+7) create `message-processor-host-svj` container in blob storage  
+
+8) in `AzureIotHubPoc.MessageProcessor` config.json set `StorageContainerName` to `message-processor-host-svj`
+
+9) in `AzureIotHubPoc.MessageProcessor` config.json set `StorageConnectionString` to correct connection string of blob storage where `message-processor-host-svj` container is present

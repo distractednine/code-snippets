@@ -1,0 +1,15 @@
+#to some tag:
+
+git revert -m 1 1.0.0.193
+
+git push
+
+
+
+
+
+#revert specific merge commit:
+
+git revert -m 2 1.0.0.214
+
+git push

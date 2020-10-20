@@ -1,0 +1,102 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "S temp stack 1",
+	"Parameters": {		
+	},
+	"Resources": {
+		"SecurityGroup": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupDescription": "My security group",
+				"SecurityGroupIngress": [{
+					"CidrIp": "0.0.0.0/0",
+					"FromPort": 22,
+					"IpProtocol": "tcp",
+					"ToPort": 22
+				}]
+			}
+		},
+		"Server": {
+			"Type": "AWS::EC2::Instance",
+			"Properties": {
+				"ImageId": "ami-2a7d75c0",
+				"InstanceType": "t2.micro",
+				"SecurityGroupIds": [{"Ref": "SecurityGroup"}]
+			}
+		},
+		"GetSotiDataQueue" : {
+      "Type" : "AWS::SQS::Queue",
+      "Properties" : {
+         "QueueName" : "GetSotiDataQueue"
+      }
+    },
+		"GetSotiDataRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {          
+			  "RoleName": "GetSotiDataRole",
+			  "AssumeRolePolicyDocument": {
+				"Version": "2012-10-17",
+				"Statement": [
+				  {
+					"Effect": "Allow",
+					"Principal": {
+					  "Service": [
+						"events.amazonaws.com"
+					  ]
+					},
+					"Action": "sts:AssumeRole"
+				  }
+				]
+			  },
+			  "Path": "/",		  
+			  "Policies": [
+				{
+				  "PolicyName": "CloudWatchPolicy",
+				  "PolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [
+					  {
+						"Effect": "Allow",
+						"Action": "*",
+						"Resource": "*"
+					  }
+					]
+				  }
+				}
+			  ]
+			}
+		},
+		"GetSotiDataScheduleRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+			  "Description": "A rule to schedule Soti data update",
+			  "Name": "GetSotiDataScheduleRule",
+			  "ScheduleExpression": "rate(1 minute)",
+			  "State": "ENABLED",
+			  "RoleArn": {
+				"Fn::GetAtt": [
+				  "GetSotiDataRole",
+				  "Arn"
+				]
+			  },
+			  "Targets": [
+				{
+				  "Arn": {
+					"Fn::GetAtt": [
+					  "GetSotiDataQueue",
+					  "Arn"
+					]
+				  },
+				  "Id": "GetSotiDataScheduleRuleTarget"
+				}
+			  ]
+			}
+		}
+	},
+	"Outputs": {
+		"PublicName": {
+			"Value": {"Fn::GetAtt": ["Server", "PublicDnsName"]},
+			"Description": "Public name (connect via SSH as user ec2-user)"
+		}
+	}
+}

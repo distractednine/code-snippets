@@ -1,0 +1,19 @@
+	interface MyInterface<in T>
+        {
+            void Test(T param);
+        }
+
+        class MyInterfaceImplementation<T> : MyInterface<T>
+        {
+            public void Test(T param)
+            {
+            }
+        }
+
+        public void Test()
+        {
+            MyInterface<object> a = new MyInterfaceImplementation<object>();
+
+	    // covariance - without `in` keyword in interface declaration this would be impossible
+            MyInterface<string> b = a;
+        }

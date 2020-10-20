@@ -1,0 +1,1 @@
+git filter-branch --tree-filter 'rm C:\code\legacyordersync\src\JustEat.LegacyOrderSync.Specs\Support\Modules\SpecsModule.cs'

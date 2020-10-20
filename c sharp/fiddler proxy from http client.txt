@@ -1,0 +1,6 @@
+var config = new AmazonIotDataConfig
+            {
+                ServiceURL = ServiceURL,
+                ProxyHost = "localhost",
+                ProxyPort = 8888
+            };

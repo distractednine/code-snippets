@@ -1,0 +1,32 @@
+for .net core project
+
+
+1) install 
+
+Microsoft.EntityFrameworkCore
+
+Microsoft.EntityFrameworkCore.SqlServer
+
+Microsoft.EntityFrameworkCore.Design
+
+for (.net framework install Microsoft.EntityFrameworkCore.Tools)
+
+to the target project
+
+
+2) open cmd in target project directory
+
+execute 
+
+	dotnet add package Microsoft.EntityFrameworkCore.Design
+
+
+3) add DbContext implementation
+
+4) open cmd in target project directory
+
+execute 
+
+	dotnet ef migrations add Initial
+
+	dotnet ef database update      (dotnet ef database update --project Jedi.DeviceDirectory.Api)

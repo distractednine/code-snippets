@@ -1,0 +1,1256 @@
+added aws scheduled CloudWatch event to publish event to GetSotiDataQueue
+
+@model JE.Infrastructure.Discovery.TemplateModels.Model
+@*
+    Do not attempt to change this file directly in your feature repository.
+    All changes should be done in form of pull request to
+    https://github.je-labs.com/ContinuousDeliveryEngineering/codedeploy-master-template
+    then published to NPM feed and pulled here by running
+    'npm update' in /deploy/infrastructure folder.
+    This template is here for change visibility only.
+*@
+@{
+    var feature = Model.ModelMetadata.feature_name;
+    var featureELB = feature + "ElasticLoadBalancer";
+    var featureALB = feature + "ApplicationLoadBalancer";
+    var isUkOrIntProduction = Model.ModelMetadata.environment == "production"
+        || Model.ModelMetadata.environment == "i18n-production"
+        || Model.ModelMetadata.environment == "aus-production";
+}
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Create an instance of the @feature feature within a given environment",
+  "Parameters": {
+    "TargetVersion": {
+      "Type": "String",
+      "Description": "A placeholder to be populated by the pipeline step CloudFormationDeploy",
+      "Default": "Not Specified"
+    },
+    "PipelineJobId": {
+      "Type": "String",
+      "Description": "A placeholder to be populated by the pipeline step CloudFormationDeploy",
+      "Default": "0"
+    },
+    "AdminPassword": {
+      "Type": "String",
+      "Description": "The Administrator password will be set to this",
+      "Default": "Abcd1234$"
+    },
+    "SecurityGroupCidrBlock" : {
+      "Type" : "String",
+      "Description" : "CIDR to allow JE offices and VPN users to connect",
+      "Default" : "10.0.0.0/8"
+    },
+    "AsgHealthCheckGracePeriod": {
+      "Type": "Number",
+      "Description": "Time in seconds that autoscaling should allow new instances to become ready for business before applying checks",
+      "Default": "1200",
+      "MaxValue": "1200"
+    },
+    "AsgAvailabilityZones": {
+      "Type": "CommaDelimitedList",
+      "Description": "List of Availability Zones that @feature instances can be launched into",
+        "Default" : "eu-west-1a,eu-west-1b,eu-west-1c"
+    },
+    "AsgMinSize": {
+        "Type": "Number",
+        "Description": "Minimum size of auto scaling group",
+        "Default": "1"
+    },
+    "AsgDesiredSize": {
+        "Type": "Number",
+        "Description": "Desired size of auto scaling group",
+        "Default": "1"
+    },
+    "AsgMaxSize": {
+        "Type": "Number",
+        "Description": "Maximum size of auto scaling group",
+        "Default": "2"
+    },
+    "AsgEventsTopicARN": {
+        "Type": "String",
+        "Description": "environment specific SNS Topic ARN to post events to (only fully supported in production)",
+        "Default": "OnlySupportedInProduction"
+    },
+    "AsgImageId": {
+        "Type": "String",
+        "Description": "The AMI ID to use",
+        "Default": "@Model.Flags.ami_id"
+    },
+    "AsgCooldown": {
+        "Type": "Number",
+        "Description": "Cooldown",
+        "Default": "30"
+    },
+    "AsgHealthCheckType": {
+        "Type": "String",
+        "Description": "HealthCheckType",
+        "Default": "ELB"
+    },
+    "MonitoringAddress": {
+        "Type": "String",
+        "Description": "Centralised monitoring address"
+    },
+    "ElbHealthyThreshold": {
+        "Type": "Number",
+        "Default": "2"
+    },
+    "ElbInterval":  {
+        "Type": "Number",
+        "Default": "30"
+    },
+@if (Model.Flags.use_elb_stickyness)
+{
+    <text>
+    "ElbStickyExpiration":  {
+        "Type": "Number",
+        "Default": "86400"
+    },
+    </text>
+}
+    "ElbTarget": {
+        "Type": "String",
+        "Default": "HTTP:80/health/check"
+    },
+    "ElbTimeout":  {
+        "Type": "Number",
+        "Default": "5"
+    },
+    "ElbUnhealthyThreshold": {
+        "Type": "Number",
+        "Default": "4"
+    },
+    "EnvironmentName": {
+        "Type": "String",
+        "Description": "Name of the environment that this feature will be launched into.  Note - NOT the name of the stack/feature."
+    },
+    "LoggingAddress": {
+        "Type": "String",
+        "Description": "Centralised logging address",
+        "Default": "qa-logging.je-labs.com"
+    },
+    "S3EnvironmentName": {
+        "Type": "String",
+        "Description": "Name of the S3 bucket.  Typically always the same as EnvironmentName, apart from if its a staging deploy."
+    },
+    "InstanceType": {
+        "Type": "String",
+        "Description": "EC2 instance type for @feature servers",
+        "Default": "m3.medium"
+    },
+@if (Model.Flags.instance_on_public_subnets || Model.Flags.is_public_subnets)
+{
+    <text>
+    "PublicSubnets": {
+        "Type": "CommaDelimitedList",
+        "Description": "List of subnets that @feature instances can be launched into"
+    },
+    </text>
+}
+    "PrivateSubnets": {
+        "Type": "CommaDelimitedList",
+        "Description": "List of subnets that @feature instances can be launched into"
+    },
+    "VpcId": {
+        "Type": "String",
+        "Description": "The VPC to launch the feature into"
+    },
+@if (Model.Flags.use_standalone_security_groups)
+{
+    if (Model.Flags.use_more_permissive_shared_security_groups)
+    {
+        @:"morepermissivesharedEc2HostIndSg": { "Type": "String" },
+    }
+    else
+    {
+        @:"@(feature)HostIndSg": { "Type": "String" },
+    }
+}
+
+@if (Model.Flags.use_legacy_security_groups)
+{
+        @:"@(feature)Ec2Sg": { "Type": "String" },
+}
+
+    "consulInstanceEc2Sg": { "Type": "String" },
+    "@(feature)ElasticLoadBalancerSSL": { "Type": "String" },
+
+@if (Model.Flags.use_standalone_security_groups)
+{
+    if (Model.Flags.use_more_permissive_shared_security_groups)
+    {
+         @:"morepermissivesharedElasticLoadBalancerEc2IndSg": { "Type": "String" },
+    }
+    else
+    {
+         @:"@(feature)ElasticLoadBalancerEc2IndSg": { "Type": "String" },
+    }
+}
+
+@if (Model.Flags.use_legacy_security_groups)
+{
+    @:"@(feature)ElasticLoadBalancerEc2Sg": { "Type": "String" },
+}
+
+    "@(feature)URLRecord" : { "Type" : "String" },
+    "FeatureName" : { "Type" : "String" },
+    "Tenant" : { "Type" : "String" },
+    "HostedZone" : { "Type" : "String" },
+
+@foreach (var country in new[] { "AU", "BE", "CA", "DK", "ES", "IE", "IT", "NL", "NO", "NZ", "UK" } )
+{
+    @:"HostedZone@(country)": { "Type": "String" },
+}
+    "DnsWeight" : {
+        "Type" : "Number",
+        "Default" : "1"
+    },
+    "SecondOctet" : { "Type" : "String" }
+
+@{ WriteLiteral(Model.Partials.feature_parameters); }
+
+  }, 
+  "Outputs": {
+    "TargetVersion": {
+        "Description": "A placeholder to be populated by the pipeline step CloudFormationDeploy",
+        "Value": { "Ref": "TargetVersion" }
+    },
+    "PipelineJobId": {
+        "Description": "A placeholder to be populated by the pipeline step CloudFormationDeploy",
+        "Value": { "Ref": "PipelineJobId" }
+    },
+    "URLRecord": {
+      "Description": "Conventional Elastic Load Balancer URL record.",
+      "Value": {
+        "Fn::Join": [
+          "",
+          [
+            {
+              "Ref": "@(feature)URLRecord"
+            },
+            ".",
+            {
+              "Ref": "HostedZone"
+            }
+          ]
+        ]
+      }
+    }
+  },
+  "Conditions": {
+    "DefaultAndCustomUrlDoesNotMatch" : {
+        "Fn::Not" : [{
+            "Fn::Equals" : [
+                { "Ref" : "@(feature)URLRecord" },
+                "@Model.DerivedFlags.default_feature_url"
+            ]
+        }]
+    }
+  },
+  "Resources": {
+    "FeatureRole" : {
+        "Type" : "AWS::IAM::Role",
+        "Properties" : {
+            "Path" : "/feature_roles/",
+            "AssumeRolePolicyDocument" : {
+            "Statement" : [{
+                "Effect" : "Allow",
+                "Principal" : { "Service" : ["ec2.amazonaws.com"] },
+                "Action" : ["sts:AssumeRole"]
+            }]
+        },
+        "ManagedPolicyArns": [
+            "arn:aws:iam::aws:policy/AWSCodeDeployDeployerAccess",
+            "arn:aws:iam::aws:policy/AmazonSSMReadOnlyAccess"
+        ],
+        "Policies" : [
+@if (Model.Partials.feature_iam != null)
+{
+        <text>
+            @{ WriteLiteral(Model.Partials.feature_iam); }
+            ,
+        </text>
+}
+            {
+                "PolicyName" : "CanDo_CodeDeploy",
+                "PolicyDocument" : {
+                    "Statement" : [{
+                        "Action": [
+                            "s3:Get*",
+                            "s3:List*",
+                            "ec2:CreateTags",
+                            "ec2:DescribeInstances",
+                            "ec2:DescribeTags",
+                            "elasticloadbalancing:DescribeLoadBalancers",
+                            "elasticloadbalancing:DeregisterInstancesFromLoadBalancer",
+                            "elasticloadbalancing:RegisterInstancesWithLoadBalancer",
+                            "elasticloadbalancing:DescribeTargetGroups",
+                            "elasticloadbalancing:DescribeTargetHealth",
+                            "elasticloadbalancing:RegisterTargets",
+                            "elasticloadbalancing:DeregisterTargets",
+                            "autoscaling:DescribeAutoScalingInstances",
+                            "autoscaling:DescribeLoadBalancers",
+                            "autoscaling:DescribeLoadBalancerTargetGroups",
+                            "autoscaling:DetachInstances",
+                            "autoscaling:DescribeAutoScalingGroups"
+                        ],
+                        "Effect": "Allow",
+                        "Resource": "*"
+                    }]
+                }
+            },
+            {
+                "PolicyName" : "CanDo_logging",
+                "PolicyDocument" : {
+                    "Statement" : [
+                        {
+                            "Action" : [ "s3:ListAllMyBuckets" ],
+                            "Effect" : "Allow",
+                            "Resource" : [ "arn:aws:s3:::*" ]
+                        },
+                        {
+                            "Action" : [ "s3:ListBucket" ],
+                            "Effect" : "Allow",
+                            "Resource" : [{ "Fn::Join" : ["", ["arn:aws:s3:::je-logging-", { "Ref" : "EnvironmentName" } ]] } ]
+                        },
+                        {
+                            "Action" : [ "s3:GetObject" ],
+                            "Effect" : "Allow",
+                            "Resource" : [{ "Fn::Join" : ["", ["arn:aws:s3:::je-logging-", { "Ref" : "EnvironmentName" }, "/*"]] }]
+                        },
+                        {
+                            "Action" : [ "s3:PutObject" ],
+                            "Effect" : "Allow",
+                            "Resource" : [{ "Fn::Join" : ["", ["arn:aws:s3:::je-logging-", { "Ref" : "EnvironmentName" }, "/*"]]}]
+                        }
+                    ]
+                }
+            },
+            {
+                "PolicyName" : "CanDo_SNS_ListAllTopics_global",
+                "PolicyDocument" : {
+                    "Statement" : [{
+                        "Action" : [
+                            "sns:ListTopics",
+                            "sns:ListSubscriptionsByTopic"
+                        ],
+                        "Effect" : "Allow",
+                        "Resource" : [{ "Fn::Join": [":", [ "arn:aws:sns:*", { "Ref" : "AWS::AccountId" }, "*" ]] }]
+                    }]
+                }
+            },
+    {
+        "PolicyName" : "CanDo_SQS_ListAllQueues_global",
+        "PolicyDocument" : {
+            "Statement" : [{
+                "Action" : [ "sqs:ListQueues" ],
+                "Effect" : "Allow",
+                "Resource" : [{ "Fn::Join": [":", [ "arn:aws:sqs:*", { "Ref" : "AWS::AccountId" }, "*" ]] }]
+            }]
+        }
+    },
+    {
+        "PolicyName" : "CanDo_SQS_CreateQueuesAndManageMessages_global",
+        "PolicyDocument" : {
+            "Statement" : [{
+            "Action" : [
+                "sqs:CreateQueue",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+                "sqs:SetQueueAttributes"
+            ],
+            "Effect" : "Allow",
+            "Resource" : [
+                {"Fn::Join": ["", 
+                    [ "arn:aws:sqs:*:", { "Ref" : "AWS::AccountId" }, ":*-", {"Ref" : "EnvironmentName"}, "-@(feature)-*" ]]
+                }]
+            }]
+        }
+    },
+    {
+        "PolicyName" : "CanDo_SNS_CreateAndSubscribeToTopics_global",
+        "PolicyDocument" : {
+            "Statement" : [{
+                "Action" : [
+                    "sns:CreateTopic",
+                    "sns:Subscribe"
+                ],
+                "Effect" : "Allow",
+                "Resource" : { "Fn::Join": [ "",
+                    [ "arn:aws:sns:*:", { "Ref" : "AWS::AccountId" }, ":*-", {"Ref" : "EnvironmentName"}, "-*" ]]
+                }
+             }]
+         }
+       }]
+    }
+    },
+    "FeatureIamInstanceProfile" : {
+        "Type" : "AWS::IAM::InstanceProfile",
+        "Properties" : {
+            "Path" : "/feature_instance_profiles/",
+            "Roles" : [{ "Ref" : "FeatureRole" }]
+        }
+    },
+    @{ WriteLiteral(Model.Partials.feature_resources); }
+    "DeployerAccessKey": {
+        "Type": "AWS::IAM::AccessKey",
+        "DependsOn": ["DeployerUser"],
+        "Properties": {
+            "UserName": { "Ref": "DeployerUser" },
+            "Status" : "Active"
+        }
+    },
+    "DeployerUser": {
+        "Type": "AWS::IAM::User",
+        "DependsOn": "DeployerGroup",
+        "Properties": {
+            "Path": "/deployment/"
+        }
+    },
+    "DeployerGroup": {
+    "Type": "AWS::IAM::Group",
+    "Properties": {
+    "Path": "/deployment/",
+    "Policies": [
+        {
+            "PolicyName": "CanDo_instance_position",
+            "PolicyDocument": {
+                "Statement" : [
+                    {
+                        "Action" : [
+                            "ec2:CreateTags",
+                            "ec2:DescribeInstances",
+                            "ec2:DescribeTags",
+                            "ec2:ModifyInstanceAttribute"
+                        ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "*" ]
+                    },
+                    {
+                        "Action" : [ "SimpleDB:*" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "*" ]
+                    },
+                    {
+                        "Action" : [ "sdb:*" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "*" ]
+                    }
+                ]
+            }
+        },
+        {
+            "PolicyName": "CanDo_deploy",
+            "PolicyDocument": {
+                "Statement" : [
+                    {
+                        "Action" : [
+                            "cloudformation:DescribeStacks",
+                            "cloudformation:DescribeStackResources",
+                            "cloudformation:DescribeStackResource"
+                        ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "*" ]
+                    },
+                    {
+                        "Action" : [ "s3:ListAllMyBuckets"],
+                        "Effect" : "Allow",
+                        "Resource" : [ "arn:aws:s3:::*" ]
+                    },
+                    {
+                        "Action" : [ "s3:ListBucket" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ 
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-deployments-", { "Ref" : "S3EnvironmentName" } ] ] },
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-consul-", { "Ref" : "S3EnvironmentName" }, "/consul-agent/*" ] ] },
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-consul-", { "Ref" : "S3EnvironmentName" }, "/consul-acls/*" ] ] }
+                        ]
+                    },
+                    {
+                        "Action" : [ "s3:GetObject" ],
+                        "Effect" : "Allow",
+                        "Resource" : [
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-deployments-", { "Ref" : "S3EnvironmentName" }, "/*" ] ] },
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-consul-", { "Ref" : "S3EnvironmentName" }, "/consul-agent/*" ] ] },
+                            { "Fn::Join" : [ "", [ "arn:aws:s3:::je-consul-", { "Ref" : "S3EnvironmentName" }, "/consul-acls/*" ] ] }
+                        ]
+                    },
+                    {
+                        "Action" : [ "s3:ListBucket" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "arn:aws:s3:::@Model.DerivedFlags.secure_bucket" ]
+                    },
+                    {
+                        "Action" : [ "s3:GetObject" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "arn:aws:s3:::@Model.DerivedFlags.secure_bucket/salts/*" ]
+                    }
+@if (Model.DerivedFlags.has_secrets)
+{
+        <text>
+                    ,
+                    {
+                        "Action" : [ "s3:ListBucket" ],
+                        "Effect" : "Allow",
+                        "Resource" : [ "arn:aws:s3:::@Model.DerivedFlags.secure_bucket" ]
+                    },
+                    {
+                        "Action" : [ "s3:GetObject" ],
+                        "Effect" : "Allow",
+                        "Resource" : [
+            @{
+                var secrets = Model.Flags.secrets_required.Split(new[] {','}, StringSplitOptions.RemoveEmptyEntries)
+                                .Select(x => "\"arn:aws:s3:::" + Model.DerivedFlags.secure_bucket + "/" + x + "/*\"");
+                var secretResources = string.Join(",\n", secrets);
+            }
+
+                        @Raw(@secretResources)
+                        ]
+                    }
+        </text>
+                }
+            ]
+        }
+    }]
+    }
+    },
+    "DeployerAddUserToGroup": {
+        "Type": "AWS::IAM::UserToGroupAddition",
+        "DependsOn": ["DeployerGroup", "DeployerUser"],
+        "Properties": {
+            "GroupName": { "Ref": "DeployerGroup" },
+            "Users": [{ "Ref": "DeployerUser" }]
+        }
+    },
+    "@(feature)AutoScalingGroup": {
+        "Type": "AWS::AutoScaling::AutoScalingGroup",
+        "DependsOn": ["DeployerAccessKey"],
+        "Properties": {
+            "AvailabilityZones": {"Ref": "AsgAvailabilityZones"},
+            "MinSize": {"Ref": "AsgMinSize"},
+            "DesiredCapacity": {"Ref": "AsgDesiredSize"},
+            "MaxSize": {"Ref": "AsgMaxSize"},
+            "Cooldown": {"Ref": "AsgCooldown"},
+            "HealthCheckGracePeriod": {"Ref": "AsgHealthCheckGracePeriod"},
+            "HealthCheckType": {"Ref": "AsgHealthCheckType"},
+            "TerminationPolicies": ["OldestInstance"],
+            @if (Model.Flags.elb)
+            {
+                <text>
+                "LoadBalancerNames": [{ "Ref": "@featureELB" }],
+                </text>
+            }
+            else
+            {
+                <text>
+                "TargetGroupARNs": [{"Ref": "@(feature)TargetGroup"}],
+                </text>
+            }
+            "LaunchConfigurationName": { "Ref": "@(feature)AutoScalingLaunchConfiguration" },
+            "NotificationConfiguration": {
+            "TopicARN": { "Ref": "AsgEventsTopicARN" },
+            "NotificationTypes": [
+                "autoscaling:EC2_INSTANCE_LAUNCH",
+                "autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+                "autoscaling:EC2_INSTANCE_TERMINATE",
+                "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+            ]
+        },
+        "Tags" : [
+            {
+                "Key" : "je:environment:name",
+                "Value" : { "Ref" : "EnvironmentName" },
+                "PropagateAtLaunch" : true
+            },
+            {
+                "Key" : "je:feature",
+                "Value" : { "Ref" : "FeatureName" },
+                "PropagateAtLaunch" : true
+            },
+            {
+                "Key": "je:tenant",
+                "Value": {"Ref": "Tenant"},
+                "PropagateAtLaunch": true
+            },
+            {
+                "Key" : "Name",
+                "Value" : { "Fn::Join" : [  " - ", [ { "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, { "Ref" : "Tenant" } ] ] },
+                "PropagateAtLaunch" : true
+            }
+        ],
+        "VPCZoneIdentifier": {
+@if (Model.Flags.instance_on_public_subnets)
+{
+        @:"Ref": "PublicSubnets"
+}
+else
+{
+        @:"Ref": "PrivateSubnets"
+}
+            }
+        }
+    },
+    "ServiceRole" : {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+            "AssumeRolePolicyDocument" :  {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "",
+                        "Effect": "Allow",
+                        "Principal": { "Service": [ "codedeploy.amazonaws.com" ] },
+                        "Action": "sts:AssumeRole"
+                    }
+                ]
+            },
+            "ManagedPolicyArns": ["arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"],
+            "Path": "/codedeploy/"
+        }
+    },
+	"GetSotiDataQueue" : {
+      "Type" : "AWS::SQS::Queue",
+      "Properties" : {
+         "QueueName" : "GetSotiDataQueue"
+      }
+    },
+    "GetSotiDataRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {          
+          "RoleName": "GetSotiDataRole",
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": [
+                    "events.amazonaws.com"
+                  ]
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+		  "Path": "/",		  
+          "Policies": [
+            {
+              "PolicyName": "CloudWatchPolicy",
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Action": "*",
+                    "Resource": "*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+	},
+	"GetSotiDataScheduleRule": {
+		"Type": "AWS::Events::Rule",
+		"Properties": {
+		  "Description": "A rule to schedule Soti data update",
+		  "Name": "GetSotiDataScheduleRule",
+		  "ScheduleExpression": "rate(40 minutes)",
+		  "State": "ENABLED",
+		  "RoleArn": {
+			"Fn::GetAtt": [
+			  "GetSotiDataRole",
+			  "Arn"
+			]
+		  },
+		  "Targets": [
+			{
+			  "Arn": {
+				"Fn::GetAtt": [
+				  "GetSotiDataQueue",
+				  "Arn"
+				]
+			  },
+			  "Id": { "Ref" : "GetSotiDataQueue" }
+			}
+		  ]
+		}
+	},
+    "app": {
+        "Type" : "AWS::CodeDeploy::Application",
+        "DependsOn": ["@(feature)AutoScalingGroup"]
+    },
+    "dg": {
+        "Type" : "AWS::CodeDeploy::DeploymentGroup",
+        "Properties" : {
+            "ApplicationName" : { "Ref" : "app" },
+            "AutoScalingGroups" : [ {"Ref" :"@(feature)AutoScalingGroup" } ],
+            "DeploymentConfigName" : "CodeDeployDefault.OneAtATime",
+            "ServiceRoleArn" : {"Fn::GetAtt" : ["ServiceRole", "Arn"] }
+        },
+        "DependsOn" : [ "ServiceRole" ]
+    },
+    "@(feature)AutoScalingLaunchConfiguration": {
+        "Type": "AWS::AutoScaling::LaunchConfiguration",
+        "Properties": {
+            "UserData": {
+                "Fn::Base64": {
+                  "Fn::Join": ["", [
+
+@{ var script = "script"; /* workaround not to confuse Razor */}
+
+                    "<@script>\n",
+                    "pushd \"c:\\program files (x86)\\Amazon\\cfn-bootstrap\"\n",
+                    "cfn-init",
+                    " --verbose",
+                    " --stack ", { "Ref" : "AWS::StackName" },
+                    " --resource @(feature)AutoScalingLaunchConfiguration",
+                    " --region ", { "Ref" : "AWS::Region" },
+                    "\n</@script>\n"
+                    ] ]
+                }
+            },
+            "ImageId": { "Ref": "AsgImageId" },
+            "InstanceType": { "Ref": "InstanceType" },
+            "IamInstanceProfile": { "Ref": "FeatureIamInstanceProfile" },
+            "KeyName": "@feature",
+            "SecurityGroups": [
+@if (Model.Flags.use_standalone_security_groups)
+{
+    if (Model.Flags.use_more_permissive_shared_security_groups)
+    {
+            @:{ "Ref": "morepermissivesharedEc2HostIndSg" },
+    }
+    else
+    {
+            @:{ "Ref": "@(feature)HostIndSg" },
+    }
+}
+@if (Model.Flags.use_legacy_security_groups)
+{
+            @:{ "Ref": "@(feature)Ec2Sg" },
+}
+              { "Ref": "consulInstanceEc2Sg" }
+            ]
+        },
+        "Metadata": {
+            "AWS::CloudFormation::Init": {
+                "configSets": {
+                    "default": [
+                        "baseline",
+                        "instance_position",
+@if (Model.DerivedFlags.has_secrets)
+{
+                         @:"download_secrets",
+}
+@if (Model.DerivedFlags.has_cfninit_pre_deploy)
+{
+                         @:"@(feature)_pre_deploy",
+}
+                        "remove_from_elb"
+                    ]
+                },
+                "baseline": {
+                    "commands": {
+                        "001_set_code_deploy_service_startup_to_automatic": {
+                            "command": "powershell -Command \"Set-Service codedeployagent -StartupType Automatic\"",
+                            "waitAfterCompletion": "0",
+                            "ignoreErrors" : "true"
+                        },
+                        "002_start_code_deploy_service": {
+                            "command": "sc start codedeployagent",
+                            "waitAfterCompletion": "0",
+                            "ignoreErrors" : "true"
+                        },
+                        "003_set_admin_password": {
+                            "command": { "Fn::Join": [ "", ["net user Administrator \"", { "Ref": "AdminPassword" }, "\""] ] },
+                            "waitAfterCompletion": "0"
+                        },
+                        "004_ntp_start_service":
+                        {
+                            "command": "sc start w32time",
+                            "waitAfterCompletion": "3",
+                            "ignoreErrors" : "true"
+                        },
+                        "005_ntp_sync": {
+                            "command": {
+                                "Fn::Join": [ "", [
+                                    "w32tm /config /manualpeerlist:10.",
+                                    { "Ref": "SecondOctet" }, ".0.10,0x8 /syncfromflags:MANUAL /reliable:no /update && w32tm /resync"
+                                ] ]
+                            },
+                            "waitAfterCompletion": "0"
+                        }
+                    },
+                    "files": {
+                        "c:\\justeat\\bootstrapping\\monitoringurl.txt": {
+                            "content": { "Ref": "MonitoringAddress" }
+                        },
+                        "c:\\justeat\\bootstrapping\\perftapmonitoringurl.txt": {
+                            "content": { "Ref": "MonitoringAddress" } 
+                        } 
+                    }
+                },
+@if (Model.DerivedFlags.has_secrets)
+{
+        <text>
+                "download_secrets": {
+                    "commands": {
+                        "100_create_secure_folder" : {
+                            "command": "mkdir c:\\justeat\\secure",
+                            "cwd" : "c:\\justeat",
+                            "waitAfterCompletion" : "0"
+                        }
+@{
+var secrets = Model.Flags.secrets_required.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+for (int i = 0; i < secrets.Length; i++)
+{
+    var secret = secrets[i];
+    var secret_folder = Model.DerivedFlags.secure_bucket + "/" + secret + "/";
+                <text>
+                    ,
+                    "1@((i + 1).ToString("D2"))_create_@(secret)_folder" : {
+                        "command" : "mkdir c:\\justeat\\secure\\@secret",
+                        "cwd" : "c:\\justeat\\secure",
+                        "waitAfterCompletion" : "0"
+                    },
+                    "1@((i + 1).ToString("D2"))_download_@(secret)_secret" : {
+                        "command" : {
+                            "Fn::Join" : [ "", [
+                                "s3 get @secret_folder /key:",{"Ref" : "DeployerAccessKey"}," /secret:",{"Fn::GetAtt" : ["DeployerAccessKey","SecretAccessKey"]}," /nogui /sub"
+                            ]]
+                        },
+                        "cwd" : "c:\\justeat\\secure\\@secret",
+                        "waitAfterCompletion" : "0"
+                    }
+                </text>
+
+}
+}
+                }
+            },
+        </text>
+}
+    "instance_position": {
+        "commands": {
+            "110_gem_download" : {
+                "command" : {
+                    "Fn::Join" : [ "", [ "s3 get je-deployments-",{"Ref" : "S3EnvironmentName"},"/gems/ /sub"," /key:",{"Ref" : "DeployerAccessKey"}," /secret:",{"Fn::GetAtt" : ["DeployerAccessKey","SecretAccessKey"]}," /nogui" ] ]
+                },
+                "cwd" : "c:\\justeat\\bootstrapping",
+                "test": "if exist instance_position_2.rb (exit 1) else (exit 0)",
+                "waitAfterCompletion" : "0"
+            },
+            "120_gem_install" : {
+                "command" : "gem install retryable-rb trollop aws-sdk-1.34.0.gem sdb_lock paashost --local --no-ri --no-rdoc",
+                "cwd" : "c:\\justeat\\bootstrapping",
+                "test": "if exist sdb_lock-0.0.3.gem (exit 0) else (exit 1)",
+                "waitAfterCompletion" : "0"
+            },
+            "130_instance_position" : {
+                "command" : {
+                    "Fn::Join" : [ "", [
+                    "ruby instance_position_2.rb"," --access-key-id ",{"Ref" : "DeployerAccessKey"}," --secret-access-key ",{"Fn::GetAtt" : ["DeployerAccessKey","SecretAccessKey"]},
+                    " --tenant ",{"Ref" : "Tenant"}," --feature ",{"Ref" : "FeatureName"}," --ec2-endpoint ","ec2.",{"Ref": "AWS::Region"},".amazonaws.com"," --environment ",{"Ref" : "EnvironmentName"}@{ if(isUkOrIntProduction){ <text>, " --no-terminate-ebs"</text> }}
+                    ]]
+                },
+                "cwd" : "c:\\justeat\\bootstrapping",
+                "waitAfterCompletion" : "0"
+            },
+            "140_write_cloudformation_params" : {
+                "command" : {
+                    "Fn::Join" : [ "", [
+                    "ruby write_cloudformation_parameters.rb"," --access-key-id ",{"Ref" : "DeployerAccessKey"}," --secret-access-key ",{"Fn::GetAtt" : ["DeployerAccessKey","SecretAccessKey"]},
+                    " --tenant ",{"Ref" : "Tenant"}," --feature ",{"Ref" : "FeatureName"}," --environment ",{"Ref" : "EnvironmentName"}," --aws-region ",{"Ref": "AWS::Region"}," --component @Model.ModelMetadata.derived_component_name"
+                    ]]
+                },
+                "cwd" : "c:\\justeat\\bootstrapping",
+                "waitAfterCompletion" : "0",
+                "ignoreErrors" : "true"
+            }
+        }
+    },
+    "remove_from_elb" : {
+        "commands": {
+            "200_remove_from_elb" : {
+                "command" : {
+                    "Fn::Join" : [ "", [
+                        "powershell -Command \"& { ",
+                        "$instanceId = (New-Object Net.WebClient).DownloadString('http://169.254.169.254/latest/meta-data/instance-id'); ",
+                        "$availabilityZone = (New-Object Net.WebClient).DownloadString('http://169.254.169.254/latest/meta-data/placement/availability-zone'); ",
+                        "$region = (Get-AWSRegion | where { $availabilityZone -match $_.Region }); ",
+                        "$asgGroupName = (Get-ASAutoScalingInstance -InstanceId $instanceId -MaxRecord 1 -Region $region).AutoScalingGroupName; ",
+                        @if (Model.Flags.elb)
+                        {
+                            <text>
+                            "$elbName = (Get-ASLoadBalancer -AutoScalingGroupName $asgGroupName -Region $region).LoadBalancerName; ",
+                            "$elbContainsInstance = ((Get-ELBLoadBalancer $elbName -Region $region).Instances | Select -ExpandProperty InstanceId) -Contains $instanceId; ",
+                            "if ($elbContainsInstance) { Remove-ELBInstanceFromLoadBalancer -LoadBalancerName $elbName -Instance $instanceId -Region $region -Force -Verbose; }",
+                            </text>
+                        }
+                        else
+                        {
+                            <text>
+                            "$targetGroupARN = (Get-ASLoadBalancerTargetGroup -AutoScalingGroupName $asgGroupName -Region $region).LoadBalancerTargetGroupARN; ",
+                            "$targetGroupContainsInstance = ((Get-ELB2TargetHealth -TargetGroupArn $targetGroupARN -Region $region).Target | Select -ExpandProperty Id) -Contains $instanceId; ",
+                            "if ($elbContainsInstance) { Unregister-ELB2Target -TargetGroupArn $targetGroupARN -Instance $instanceId -Region $region -Force -Verbose; }",
+                            </text>
+                        }
+                        " }\""
+                    ]]
+                },
+                "waitAfterCompletion" : "0",
+                "ignoreErrors" : "true"
+            }
+        }
+    }
+@if (Model.DerivedFlags.has_cfninit_pre_deploy)
+{
+    @:,
+    WriteLiteral(Model.Partials.cfninit_pre_deploy);
+}
+            }
+        }
+    },
+@if (Model.Flags.elb)
+{
+    <text>
+    "@featureELB" : {
+        "Properties" : {
+            @if (isUkOrIntProduction)
+            {
+                <text>
+                "AccessLoggingPolicy" : {
+                    "Enabled" : true,
+                    "S3BucketName": { "Fn::Join" : [ "-", [ "elb-logging", { "Ref" : "EnvironmentName" } ] ] },
+                    "S3BucketPrefix": { "Fn::Join": [ "/", [ { "Ref": "Tenant" }, { "Ref": "FeatureName" } ] ] }
+                },
+                </text>
+            }
+            @if (!Model.Flags.is_public_subnets)
+            {
+                @:"Scheme" : "internal",
+            }
+            "ConnectionDrainingPolicy" : {
+            "Enabled" : true,
+            "Timeout" : 60
+            },
+            "CrossZone": "true",
+            @if (Model.Flags.use_elb_stickyness)
+            {
+                <text>
+                "LBCookieStickinessPolicy": [
+                    {
+                        "CookieExpirationPeriod": { "Ref" : "ElbStickyExpiration" },
+                        "PolicyName": "@(feature)ElasticLoadBalancerStickinessPolicy"
+                    }
+                ],
+                </text>
+            }
+            "HealthCheck" : {
+                "HealthyThreshold" : { "Ref": "ElbHealthyThreshold" },
+                "Interval" : { "Ref": "ElbInterval" },
+                "Target" : {"Ref": "ElbTarget"},
+                "Timeout" : { "Ref": "ElbTimeout" },
+                "UnhealthyThreshold" : { "Ref": "ElbUnhealthyThreshold" }
+            },
+            "Listeners" : [
+            {
+                "InstancePort" : "80",
+                "LoadBalancerPort" : "80",
+                "Protocol" : "@(Model.Flags.use_elb_tcp_listeners ? "TCP" : "HTTP")"
+                @if (Model.Flags.use_elb_stickyness)
+                {
+                    @:,"PolicyNames" : ["@(feature)ElasticLoadBalancerStickinessPolicy"]
+                }
+            },
+            {
+                "InstancePort" : "80",
+                "LoadBalancerPort" : "443",
+                @if (Model.Flags.use_elb_tcp_listeners)
+                {
+                    <text>
+                    "Protocol" : "SSL",
+                    "InstanceProtocol" : "TCP",
+                    </text>
+                }
+                else
+                {
+                    <text>
+                    "Protocol" : "HTTPS",
+                    "InstanceProtocol" : "HTTP",
+                    </text>
+                }
+                "SSLCertificateId" : { "Ref" : "@(feature)ElasticLoadBalancerSSL" }
+                @if (Model.Flags.use_elb_stickyness)
+                {
+                    @:,"PolicyNames" : ["@(feature)ElasticLoadBalancerStickinessPolicy"]
+                }
+            }
+            ],
+            "SecurityGroups" : [
+            @if (Model.Flags.use_standalone_security_groups)
+            {
+                if (Model.Flags.use_more_permissive_shared_security_groups)
+                {
+                    @:{ "Ref" : "morepermissivesharedElasticLoadBalancerEc2IndSg" }@(Model.Flags.use_legacy_security_groups ? "," : "") 
+                }
+                else
+                {
+                    @:{ "Ref" : "@(feature)ElasticLoadBalancerEc2IndSg" }@(Model.Flags.use_legacy_security_groups ? "," : "")
+                }
+            }
+            @if (Model.Flags.use_legacy_security_groups)
+            {
+                @:{ "Ref" : "@(feature)ElasticLoadBalancerEc2Sg" }
+            }
+            ],
+            "Subnets" : {
+            @if (Model.Flags.is_public_subnets)
+            {
+                @:"Ref" : "PublicSubnets"
+            }
+            else
+            {
+                @:"Ref" : "PrivateSubnets"
+            }
+            },
+            "Tags" : [
+                {
+                    "Key" : "je:environment:name",
+                    "Value" : { "Ref" : "EnvironmentName" }
+                },
+                {
+                    "Key" : "je:feature",
+                    "Value" : { "Ref" : "FeatureName" }
+                },
+                {
+                    "Key": "je:tenant",
+                    "Value": {"Ref": "Tenant"}
+                }
+            ]
+        },
+        "Type" : "AWS::ElasticLoadBalancing::LoadBalancer"
+        }
+    </text>
+}
+else
+{
+    <text>
+    "@featureALB" : {
+        "Properties" : {
+        @if (isUkOrIntProduction)
+        {
+            <text>
+            "LoadBalancerAttributes" : [
+                {
+                    "Key": "access_logs.s3.enabled",
+                    "Value": true
+                },
+                {
+                    "Key": "access_logs.s3.bucket",
+                    "Value": { "Fn::Join" : [  "-", [ "elb-logging", { "Ref" : "EnvironmentName" } ] ] }
+                },
+                {
+                    "Key": "access_logs.s3.prefix",
+                    "Value":
+                    {
+                        "Fn::Join":
+                        [
+                            "/",
+                            [
+                            { "Ref": "Tenant" },
+                            { "Ref": "FeatureName" }
+                            ]
+                        ]
+                    }
+                }
+            ],
+            </text>
+        }
+        @if (!Model.Flags.is_public_subnets)
+        {
+            @:"Scheme" : "internal",
+        }
+        "SecurityGroups" : [
+        @if (Model.Flags.use_standalone_security_groups)
+        {
+            if (Model.Flags.use_more_permissive_shared_security_groups)
+            {
+                @:{ "Ref" : "morepermissivesharedElasticLoadBalancerEc2IndSg" }@(Model.Flags.use_legacy_security_groups ? "," : "")
+            }
+            else
+            {
+                @:{ "Ref" : "@(feature)ElasticLoadBalancerEc2IndSg" }@(Model.Flags.use_legacy_security_groups ? "," : "")
+            }
+        }
+        @if (Model.Flags.use_legacy_security_groups)
+        {
+            @:{ "Ref" : "@(feature)ElasticLoadBalancerEc2Sg" }
+        }
+        ],
+        "Subnets" : {
+        @if (Model.Flags.is_public_subnets)
+        {
+            @:"Ref" : "PublicSubnets"
+        }
+        else
+        {
+            @:"Ref" : "PrivateSubnets"
+        }
+        },
+        "Tags" : [
+            {
+                "Key" : "je:environment:name",
+                "Value" : { "Ref" : "EnvironmentName" }
+            },
+            {
+                "Key" : "je:feature",
+                "Value" : { "Ref" : "FeatureName" }
+            },
+            {
+                "Key": "je:tenant",
+                "Value": {"Ref": "Tenant"}
+            }
+        ]
+        },
+        "Type" : "AWS::ElasticLoadBalancingV2::LoadBalancer"
+        },
+        "@(feature)TargetGroup": {
+            "Properties": {
+                "HealthCheckIntervalSeconds": { "Ref": "ElbInterval" },
+                "HealthCheckPath": "/health/check",
+                "HealthCheckProtocol": "HTTP",
+                "HealthCheckTimeoutSeconds": { "Ref": "ElbTimeout" },
+                "HealthyThresholdCount": { "Ref": "ElbHealthyThreshold" },
+                "Matcher": {
+                    "HttpCode": "200"
+                },
+                "Port": 80,
+                "Protocol": "HTTP",
+                "TargetGroupAttributes":
+                [
+                    @if (Model.Flags.use_elb_stickyness)
+                    {
+                        <text>
+                        {
+                            "Key": "stickiness.enabled",
+                            "Value": "true"
+                        },
+                        {
+                            "Key": "stickiness.type",
+                            "Value": "lb_cookie"
+                        },
+                        {
+                            "Key": "stickiness.lb_cookie.duration_seconds",
+                            "Value": { "Ref" : "ElbStickyExpiration" }
+                        },
+                        </text>
+                    }
+                    {
+                        "Key": "deregistration_delay.timeout_seconds",
+                        "Value": 60
+                    }
+                ],
+                "UnhealthyThresholdCount": { "Ref": "ElbUnhealthyThreshold" },
+                "VpcId": {"Ref": "VpcId"}
+            },
+            "Type": "AWS::ElasticLoadBalancingV2::TargetGroup"
+        },
+        "@(feature)ElasticLoadBalancerSecureListener": {
+            "Properties":{
+                "Certificates": [{
+                    "CertificateArn": {"Ref": "@(feature)ElasticLoadBalancerSSL"}
+                }],
+                "DefaultActions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": {"Ref": "@(feature)TargetGroup"}
+                }],
+                "LoadBalancerArn": { "Ref" : "@featureALB" },
+                "Port": "443",
+                "Protocol": "HTTPS"
+            },
+        "Type": "AWS::ElasticLoadBalancingV2::Listener"
+        },
+        "@(feature)ElasticLoadBalancerListener": {
+            "Properties":{
+                "DefaultActions": [{
+                    "Type": "forward",
+                    "TargetGroupArn": {"Ref": "@(feature)TargetGroup"}
+                }],
+                "LoadBalancerArn": { "Ref" : "@featureALB" },
+                "Port": "80",
+                "Protocol": "HTTP"
+            },
+            "Type": "AWS::ElasticLoadBalancingV2::Listener"
+        }
+    </text>
+}
+@if (Model.Flags.elb_dns)
+{
+        <text>
+            ,
+            "@(feature)DNSZone" : {
+                "Properties" : {
+                    "Comment" : "Zone apex alias targeted to @(feature)ElasticLoadBalancer.",
+                    "HostedZoneName" : { "Fn::Join" : ["", [{ "Ref" : "HostedZone" }, "."]] },
+                    "RecordSets" : [{ 
+                        "AliasTarget" : {
+                          @if (Model.Flags.elb)
+                          {
+                            <text>
+                            "DNSName" : { "Fn::GetAtt" : ["@featureELB", "DNSName"] },
+                            "HostedZoneId" : { "Fn::GetAtt" : ["@featureELB","CanonicalHostedZoneNameID"] }
+                            </text>
+                          }
+                          else {
+                            <text>
+                            "DNSName" : { "Fn::GetAtt" : ["@featureALB", "DNSName"] },
+                            "HostedZoneId" : { "Fn::GetAtt" : ["@featureALB","CanonicalHostedZoneID"] }
+                            </text>
+                          }
+                        },
+                        "Name" : { "Fn::Join" : ["", [{ "Ref" : "@(feature)URLRecord" }, ".", { "Ref" : "HostedZone" }, "."]] },
+                        "Type" : "A",
+                        "Weight": { "Ref" : "DnsWeight" },
+                        "SetIdentifier": { "Fn::Join" : [  "-", [ { "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, { "Ref" : "Tenant" } ] ] }
+                    }]
+                },
+                "Type" : "AWS::Route53::RecordSetGroup"
+            }
+        </text>
+}
+
+    ,
+    "@(feature)DefaultDNSZone" : {
+        "Condition" : "DefaultAndCustomUrlDoesNotMatch",
+        "Properties" : {
+            "Comment" : "Zone apex alias targeted to @(feature)ElasticLoadBalancer.",
+            "HostedZoneName" : { "Fn::Join" : ["", [{ "Ref" : "HostedZone" }, "."]] },
+            "RecordSets" : [{
+                "AliasTarget" : {
+                  @if (Model.Flags.elb)
+                  {
+                    <text>
+                    "DNSName" : { "Fn::GetAtt" : ["@featureELB", "DNSName"] },
+                    "HostedZoneId" : { "Fn::GetAtt" : ["@featureELB","CanonicalHostedZoneNameID"] }
+                    </text>
+                  }
+                  else {
+                    <text>
+                    "DNSName" : { "Fn::GetAtt" : ["@featureALB", "DNSName"] },
+                    "HostedZoneId" : { "Fn::GetAtt" : ["@featureALB","CanonicalHostedZoneID"] }
+                    </text>
+                  }
+                 },
+                "Name" : { "Fn::Join" : ["", ["@Model.DerivedFlags.default_feature_url", ".", { "Ref" : "HostedZone" }, "."]] },
+                "Type" : "A",
+                "Weight": { "Ref" : "DnsWeight" },
+                "SetIdentifier": { "Fn::Join" : [  "-", [ { "Ref" : "EnvironmentName" }, { "Ref" : "FeatureName" }, { "Ref" : "Tenant" }, "default" ] ] }
+            }]
+        },
+        "Type" : "AWS::Route53::RecordSetGroup"
+    }
+  }
+}

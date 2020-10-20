@@ -1,0 +1,11 @@
+opwershell as admin
+
+az login
+
+
+az storage blob delete-batch --account-name <storage_account_name> --source <container_name>
+
+
+eg:
+
+az storage blob delete-batch --account-name storaccjedistagingsv --source device-telemetry-data

@@ -1,0 +1,158 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "stack 1",
+	"Parameters": {
+		
+	},
+	"Resources": {		
+		"ScheduledJobsRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Statement": [{
+						"Action": "sts:AssumeRole",
+						"Effect": "Allow",
+						"Principal": {
+							"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+						}
+					}],
+					"Version": "2012-10-17"
+				}
+			}
+		},
+		"GetSotiDataJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "GetSotiDataJobQueue"
+			}
+		},
+		"CleanRedundantDeviceConnectionInfosJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "CleanRedundantDeviceConnectionInfosJobQueue"
+			}
+		},
+		"GetSimProDataJobQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "GetSimProDataJobQueue"
+			}
+		},
+		"GetSotiDataJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule GetSotiDataJob",
+				"Name": "GetSotiDataJobRule",
+				"ScheduleExpression": "cron(0 */1 * * ? *)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["GetSotiDataJobQueue", "Arn"]
+					},
+					"Id": "GetSotiDataJobRuleId",
+					"Input": "{\"InvokeGetSotiDataJob\":true}"
+				}]
+			}
+		},
+		"CleanRedundantDeviceConnectionInfosJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule CleanRedundantDeviceConnectionInfosJob",
+				"Name": "CleanRedundantDeviceConnectionInfosJobRule",
+				"ScheduleExpression": "cron(45 */2 * * ? *)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["CleanRedundantDeviceConnectionInfosJobQueue", "Arn"]
+					},
+					"Id": "CleanRedundantDeviceConnectionInfosJobRuleId",
+					"Input": "{\"InvokeCleanRedundantDeviceConnectionInfosJob\":true}"
+				}]
+			}
+		},
+		"GetSimProDataJobRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule GetSimProDataJob",
+				"Name": "GetSimProDataJobRule",
+				"ScheduleExpression": "cron(0 9 * * ? *)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["ScheduledJobsRole", "Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["GetSimProDataJobQueue", "Arn"]
+					},
+					"Id": "GetSimProDataJobRuleId",
+					"Input": "{\"InvokeGetSimProDataJob\":true}"
+				}]
+			}
+		},
+		"ScheduledJobsQueuePolicy": {
+			"DependsOn": [
+				"GetSotiDataJobQueue", "CleanRedundantDeviceConnectionInfosJobQueue", "GetSimProDataJobQueue",
+				"GetSotiDataJobRule", "CleanRedundantDeviceConnectionInfosJobRule", "GetSimProDataJobRule"
+			],
+			"Type": "AWS::SQS::QueuePolicy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Id": "ScheduledJobsQueuePolicy",
+					"Statement": [
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["GetSotiDataJobQueue", "Arn"]
+							}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["CleanRedundantDeviceConnectionInfosJobQueue", "Arn"]
+							}
+						},
+						{
+							"Effect": "Allow",
+							"Principal": {
+								"Service": ["events.amazonaws.com", "sqs.amazonaws.com"]
+							},
+							"Action": "sqs:*",
+							"Resource": {
+								"Fn::GetAtt": ["GetSimProDataJobQueue", "Arn"]
+							}
+						}
+					]
+				},								
+				"Queues": [
+					{
+						"Ref": "GetSotiDataJobQueue"
+					},
+					{
+						"Ref": "CleanRedundantDeviceConnectionInfosJobQueue"
+					},
+					{
+						"Ref": "GetSimProDataJobQueue"
+					}
+				]
+			}
+		}
+	},
+	"Outputs": {
+		
+	}
+}

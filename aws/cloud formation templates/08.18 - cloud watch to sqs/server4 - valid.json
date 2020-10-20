@@ -1,0 +1,126 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "stack 1",
+	"Parameters": {
+		
+	},
+	"Resources": {
+		"MyPolicy397DCBF8": {
+			"Type": "AWS::IAM::Policy",
+			"Properties": {
+				"PolicyDocument": {
+					"Statement": [{
+						"Action": "*",
+						"Effect": "Allow",
+						"Resource": "*"
+					}],
+					"Version": "2012-10-17"
+				},
+				"PolicyName": "MyProjectEventsRoleDefaultPolicy397DCBF8",
+				"Roles": [{
+					"Ref": "MyProjectEventsRole5B7D93F5"
+				}]
+			}
+		},
+		"MyProjectEventsRole5B7D93F5": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Statement": [{
+						"Action": "sts:AssumeRole",
+						"Effect": "Allow",
+						"Principal": {
+							"Service": ["events.amazonaws.com",
+							"sqs.amazonaws.com"]
+						}
+					}],
+					"Version": "2012-10-17"
+				}
+			}
+		},
+		"MyQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "MyQueue"
+			}
+		},
+		"MyRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"RoleName": "MyRole",
+				"AssumeRolePolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Effect": "Allow",
+						"Principal": {
+							"Service": ["events.amazonaws.com",
+							"sqs.amazonaws.com"]
+						},
+						"Action": "sts:AssumeRole"
+					}]
+				},
+				"Path": "/",
+				"Policies": [{
+					"PolicyName": "CloudWatchPolicy",
+					"PolicyDocument": {
+						"Version": "2012-10-17",
+						"Statement": [{
+							"Effect": "Allow",
+							"Action": "*",
+							"Resource": "*"
+						}]
+					}
+				}]
+			}
+		},
+		"MyRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "A rule to schedule data update",
+				"Name": "MyRule",
+				"ScheduleExpression": "rate(1 minute)",
+				"State": "ENABLED",
+				"RoleArn": {
+					"Fn::GetAtt": ["MyRole",
+					"Arn"]
+				},
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["MyQueue",
+						"Arn"]
+					},
+					"Id": "MyRule1",
+					"Input": "{\"a\":\"b\"}"
+				}]
+			}
+		},
+		"MyQueuePolicy": {
+			"DependsOn": ["MyQueue", "MyRule"],
+			"Type": "AWS::SQS::QueuePolicy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Id": "MyQueuePolicy",
+					"Statement": [{						
+						"Effect": "Allow",
+						"Principal": {
+							"Service": ["events.amazonaws.com",
+							"sqs.amazonaws.com"]
+						},
+						"Action": "sqs:SendMessage",
+						"Resource": {
+							"Fn::GetAtt": ["MyQueue",
+							"Arn"]
+						}
+					}]
+				},
+				"Queues": [{
+					"Ref": "MyQueue"
+				}]
+			}
+		}
+	},
+	"Outputs": {
+		
+	}
+}

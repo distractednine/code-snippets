@@ -1,0 +1,12 @@
+var selector = "#horizontalChartHolder07125834304064058bar34";
+
+
+	var event;
+var eventName = "mouseover";
+        var element = document.querySelector(selector);
+
+        event = document.createEvent("Event");
+        event.initEvent(eventName, true, true);
+ 
+
+        element.dispatchEvent(event);

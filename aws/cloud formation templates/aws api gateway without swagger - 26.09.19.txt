@@ -1,0 +1,256 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Jedi-IoT-Poc web api
+
+Parameters:
+  Environment:
+    Type: String 
+  S3BucketWhereLambdaZipIsStored:
+    Type: String 
+  SendCommandLambdaZippedFileName:
+    Type: String 
+  SendCommandLambdaFunctionName:
+    Type: String 
+    Default: SendDeviceCommandLambda
+  GetDeviceByIdLambdaZippedFileName:
+    Type: String
+  GetDeviceByIdFunctionName:
+    Type: String 
+    Default: GetDeviceByIdLambda
+  SecurityGroupId:
+    Type: String 
+    Default: sg-0743ebeb9a35bb53f
+  PrivateSubnetAId:
+    Type: String 
+    Default: subnet-648d2c3d
+  PrivateSubnetBId:
+    Type: String 
+    Default: subnet-648d2c3d
+  ApiGatewayStageName:
+    Type: String
+    Default: production
+  ApiGatewayBasePath:
+    Type: String
+    Default: /jediapi
+    
+Resources:
+  ApiLambdaFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - 
+          PolicyName: !Sub "${AWS::StackName}ApiLambdaFunctionPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                  - "logs:DescribeLogStreams"
+                Resource:
+                  - "arn:aws:logs:*:*:*"
+
+  SendCommandFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 
+        !Join
+          - ''
+          - 
+            - !Sub ${AWS::StackName}
+            - "-"
+            - !Sub ${Environment}
+            - "-"
+            - !Sub ${SendCommandLambdaFunctionName}
+      Code: 
+        S3Bucket: !Sub "${S3BucketWhereLambdaZipIsStored}"
+        S3Key: !Sub "${SendCommandLambdaZippedFileName}"
+      Role: !GetAtt ApiLambdaFunctionRole.Arn
+      MemorySize: 256
+      Handler: "AWSLambdaForApiGateway::AWSLambdaForApiGateway.SendCommandFunction::FunctionHandler"
+      Runtime: "dotnetcore2.1"
+      Timeout: 30      
+      Environment:
+        Variables:
+          UserAccessKey: !Ref AccessKeyForUserForLambdaSendingCommands
+          UserSecretKey: !GetAtt AccessKeyForUserForLambdaSendingCommands.SecretAccessKey
+
+  GetDeviceByIdFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: 
+        !Join
+          - ''
+          - 
+            - !Sub ${AWS::StackName}
+            - "-"
+            - !Sub ${Environment}
+            - "-"
+            - !Sub ${GetDeviceByIdFunctionName} 
+      Code: 
+        S3Bucket: !Sub "${S3BucketWhereLambdaZipIsStored}"
+        S3Key: !Sub "${GetDeviceByIdLambdaZippedFileName}"
+      Role: !GetAtt ApiLambdaFunctionRole.Arn
+      MemorySize: 256
+      Handler: "AWSLambdaForApiGateway::AWSLambdaForApiGateway.GetDeviceByIdFunction::FunctionHandler"
+      Runtime: "dotnetcore2.1"
+      Timeout: 30      
+      Environment:
+        Variables:
+          test: test
+
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - 
+            Effect: Allow
+            Principal:
+              Service:
+                - "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Policies:
+        - 
+          PolicyName: !Sub "${AWS::StackName}GatewayPolicy"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - 
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt SendCommandFunction.Arn
+              - 
+                Effect: Allow
+                Action:
+                  - "lambda:InvokeFunction"
+                Resource:
+                  - !GetAtt GetDeviceByIdFunction.Arn
+
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: JediApiGateway
+      Description: Rest api for handling http requests
+
+
+  ApiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    Properties:
+      RestApiId: !Ref ApiGateway
+      Description: "ApiGateway deployment"
+    DependsOn:
+      - SendDeviceCommandMethod
+      - GetDeviceByIdMethod
+
+  ApiGatewayBasePathMapping:
+    Type: AWS::ApiGateway::BasePathMapping
+    Properties: 
+      BasePath: deviceapi
+      DomainName: 
+        Type: AWS::ApiGateway::DomainName
+        Properties: 
+          DomainName: jedi
+      RestApiId: !Ref ApiGateway
+      Stage: !Sub ${ApiGatewayStageName}
+
+  SendDeviceCommandResource:
+    Type: AWS::ApiGateway::Resource
+    Properties: 
+      PathPart: command
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt 
+      - ApiGateway
+      - RootResourceId
+
+  SendDeviceCommandMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SendCommandFunction.Arn}/invocations"
+        Credentials: !GetAtt ApiGatewayRole.Arn
+      ResourceId: !Ref SendDeviceCommandResource
+      RestApiId: !Ref ApiGateway
+  
+  SendDeviceCommandInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "SendCommandFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/"
+
+  GetDeviceByIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties: 
+      PathPart: device
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt 
+      - ApiGateway
+      - RootResourceId
+
+  GetDeviceByIdMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "GET"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetDeviceByIdFunction.Arn}/invocations"
+        Credentials: !GetAtt ApiGatewayRole.Arn
+      ResourceId: !Ref GetDeviceByIdResource
+      RestApiId: !Ref ApiGateway
+      RequestParameters:
+        method.request.querystring.deviceId: true
+  
+  GetDeviceByIdInvokePermission:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "GetDeviceByIdFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/"
+
+  UserForLambdaSendingCommands:
+    Type: AWS::IAM::User
+    Properties:
+      Policies:
+        -
+          PolicyName: "JustEatPolicyPublishMessages"
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              -
+                Effect: "Allow"
+                Action:
+                  - "iot:Connect"
+                  - "iot:Publish"      
+                Resource: "*"
+      UserName: jediApiGatewayUser
+
+  AccessKeyForUserForLambdaSendingCommands:
+    Type: AWS::IAM::AccessKey
+    Properties: 
+      Status: Active
+      UserName: !Ref UserForLambdaSendingCommands

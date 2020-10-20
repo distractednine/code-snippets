@@ -1,0 +1,10 @@
+select * from sys.database_firewall_rules
+
+select * from sys.event_log
+
+select * from sys.database_connection_stats
+
+
+-- select azure plan (tier) from db:
+
+select * from sys.database_service_objectives

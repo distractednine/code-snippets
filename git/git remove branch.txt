@@ -1,0 +1,13 @@
+#list
+
+git branch --list
+
+
+# remove from remote
+
+git push origin --delete <branchName>
+
+
+#remove from local:
+
+git branch -d <branchName>

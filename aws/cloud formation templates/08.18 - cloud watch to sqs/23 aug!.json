@@ -1,0 +1,80 @@
+{
+  "functions": {
+    "MyLambdaFunction": {
+      "role": "MyLambdaRole",
+      "handler": "index.handle"
+    }
+  },
+  "resources": {
+    "Resources": {
+      "MyEventName": {
+        "Type": "AWS::Events::Rule",
+        "Properties": {
+          "Description": "An awesome periodic event",
+          "Name": "MyEventName",
+          "ScheduleExpression": "cron(0 6 * * ? *)",
+          "State": "ENABLED",
+          "RoleArn": {
+            "Fn::GetAtt": [
+              "MyLambdaRole",
+              "Arn"
+            ]
+          },
+          "Targets": [
+            {
+              "Arn": {
+                "Fn::GetAtt": [
+                  "MyLambdaFunction",
+                  "Arn"
+                ]
+              },
+              "Id": "MyLambdaFunction",
+              "Input": "{\"key\": \"value\"}"
+            }
+          ]
+        }
+      },
+      "MyLambdaRole": {
+        "Type": "AWS::IAM::Role",
+        "Properties": {
+          "Path": "/my_uservices/",
+          "RoleName": "MyLambdaRole",
+          "AssumeRolePolicyDocument": {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": [
+                    "lambda.amazonaws.com",
+                    "events.amazonaws.com"
+                  ]
+                },
+                "Action": "sts:AssumeRole"
+              }
+            ]
+          },
+          "Policies": [
+            {
+              "PolicyName": "MyLambdaPolicy",
+              "PolicyDocument": {
+                "Version": "2012-10-17",
+                "Statement": [
+                  {
+                    "Effect": "Allow",
+                    "Action": [
+                      "logs:CreateLogGroup",
+                      "logs:CreateLogStream",
+                      "logs:PutLogEvents"
+                    ],
+                    "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/*:*:*"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

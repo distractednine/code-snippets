@@ -1,0 +1,11 @@
+cmd
+
+%comspec% /k "C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\Common7\Tools\VsDevCmd.bat"
+
+cd C:\Program Files (x86)\Microsoft SDKs\Windows\v10.0A\bin\NETFX 4.7.2 Tools
+
+sn -T $"full path to assembly"
+
+eg: 
+
+sn -T "C:\code\SnoopyApi\packages\Microsoft.EntityFrameworkCore.Abstractions.2.1.2\lib\netstandard2.0\Microsoft.EntityFrameworkCore.Abstractions.dll"

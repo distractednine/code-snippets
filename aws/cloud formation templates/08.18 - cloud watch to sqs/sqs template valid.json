@@ -1,0 +1,70 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Resources": {
+		"LucyQueue": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "LucySQS"
+			}
+		},
+		"LucyQueuePolicy": {
+			"DependsOn": ["LucyQueue",
+			"LucyEventRule"],
+			"Type": "AWS::SQS::QueuePolicy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Id": "LucyQueuePolicy",
+					"Statement": [{
+						"Sid": "AWS_Lucy_event",
+						"Effect": "Allow",
+						"Principal": {
+							"AWS": "*"
+						},
+						"Action": "sqs:SendMessage",
+						"Resource": {
+							"Fn::GetAtt": ["LucyQueue",
+							"Arn"]
+						},
+						"Condition": {
+							"ArnEquals": {
+								"aws:SourceArn": {
+									"Fn::GetAtt": ["LucyEventRule",
+									"Arn"]
+								}
+							}
+						}
+					}]
+				},
+				"Queues": [{
+					"Ref": "LucyQueue"
+				}]
+			}
+		},
+		"LucyEventRule": {
+			"Type": "AWS::Events::Rule",
+			"Properties": {
+				"Description": "LucyEventRule",
+				"EventPattern": {
+					"source": ["aws.s3"],
+					"detail-type": ["AWS API Call via CloudTrail"],
+					"detail": {
+						"eventSource": ["s3.amazonaws.com"],
+						"eventName": ["PutObject",
+						"UploadPart",
+						"CreateMultipartUpload"]
+					}
+				},
+				"State": "ENABLED",
+				"Targets": [{
+					"Arn": {
+						"Fn::GetAtt": ["LucyQueue",
+						"Arn"]
+					},
+					"Id": "lucy_event1",
+					
+				}]
+			}
+		}
+	}
+}
