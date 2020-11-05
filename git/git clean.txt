@@ -1,0 +1,4 @@
+git clean -f -x -d
+
+
+https://git-scm.com/docs/git-clean
