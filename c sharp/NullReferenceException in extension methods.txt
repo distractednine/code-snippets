@@ -1,0 +1,25 @@
+	public static void Main()
+	{
+	    var test = (CreateDowntimeRequest)null;
+            test.ToModel(); // NullReferenceException won't happen here
+	}
+
+	public static CreateDowntimeModel ToModel(this CreateDowntimeRequest request)
+        {
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(CreateDowntimeRequest)); // this code will be reached
+            }
+
+            return new CreateDowntimeModel
+            {
+                AllocationId = request.AllocationId,
+                DowntimeCode = request.DowntimeCode!.Value,
+                Date = request.Date!.Value,
+                FromTime = request.FromTime,
+                ToTime = request.ToTime,
+                TimeSpanMinutes = request.TimeSpanMinutes!.Value,
+                Comment = request.Comment,
+                HolidayScheme = request.HolidayScheme
+            };
+        }
