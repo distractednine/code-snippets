@@ -1,0 +1,37 @@
+[Fact]
+        public void Test()
+        {
+            IEnumerable<string> enumerable = new List<string> { "a", "b", "c" };
+
+            var a = enumerable
+                .Select(x =>
+                {
+                    Print("en select ", x);
+
+                    return x;
+                })
+                .Where(x =>
+            {
+                Print("en where ", x);
+                return true;
+            }).ToList();
+
+            var b = enumerable
+                .Select(x =>
+                {
+                    Print("col select ", x);
+
+                    return x;
+                }).ToList()
+                .Where(x =>
+                {
+                    Print("col where ", x);
+                    return true;
+                }).ToList();
+
+        }
+
+        private void Print(string op, string elem)
+        {
+            Debug.WriteLine("in " + op + " " + elem);
+        }
