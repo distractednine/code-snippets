@@ -1,0 +1,41 @@
+cfg.CreateMap<AuroraAppointmentModel, ReportAppointmentModel>()
+                .ForMember(
+                    x => x.Time,
+                    x =>
+                        x.MapFrom(src =>
+                            $"{src.Start.DateTime.ToString("HH:mm", CultureInfo.InvariantCulture)} - {src.End.DateTime.ToString("HH:mm", CultureInfo.InvariantCulture)}"))
+                .ForMember(
+                    x => x.Status, 
+                    x =>
+                    {
+                        x.PreCondition(src => src.PatientLinks.Any() && src.PatientLinks.FirstOrDefault() != null);
+                        x.MapFrom(src => src.PatientLinks.First().StatusCode);
+                    })
+                .ForMember(
+                    x => x.Resource, 
+                    x =>
+                    {
+                        x.PreCondition(src => src.ResourceLinks.Any() && src.ResourceLinks.FirstOrDefault() != null);
+                        x.MapFrom(src => src.ResourceLinks.First().ResourceCode);
+                    })
+                .ForMember(
+                    x => x.Phones, 
+                    x =>
+                    {
+                        x.PreCondition(src => src.PatientLinks.Any() && src.PatientLinks.FirstOrDefault() != null);
+                        x.MapFrom(src => src.PatientLinks.First().PatientNumber);
+                    })
+                .ForMember(
+                    x => x.Patients,
+                    x =>
+                    {
+                        x.PreCondition(src => src.PatientLinks.Any() && src.PatientLinks.FirstOrDefault() != null);
+                        x.MapFrom(src => string.Join(", ", src.PatientLinks.Select(y => y.PatientNumber)));
+                    })
+                .ForMember(
+                    x => x.Specialists,
+                    x =>
+                    {
+                        x.PreCondition(src => src.AudiologistLinks.Any() && src.AudiologistLinks.FirstOrDefault() != null);
+                        x.MapFrom(src => string.Join(", ", src.AudiologistLinks.Select(y => y.AudiologistName)));
+                    });
