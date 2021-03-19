@@ -1,0 +1,4 @@
+reverts 1 last commit: 
+
+
+git reset --soft head~1
