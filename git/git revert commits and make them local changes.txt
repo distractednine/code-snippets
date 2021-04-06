@@ -1,3 +1,18 @@
+1) soft reset all local commits
+
+2) stash local changes 
+
+3) git rebase origin\master
+
+4) apply local changes from stash
+
+5) commit local changes
+
+6) push local changes
+
+
+
+
 reverts 1 last commit: 
 
 
