@@ -1,0 +1,5 @@
+git diff <olderCommit> <newerCommit> --stat
+
+example:
+
+git diff 584fa8377e9a e35d7ad4bdf --stat

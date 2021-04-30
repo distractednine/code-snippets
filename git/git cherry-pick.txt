@@ -1,0 +1,17 @@
+source commit id: 5c8764b
+
+source branch name: 48397_add_user_tasks_api
+
+target branch name: 48398-deploy-bpmn
+
+
+
+If I need to get source commit in my target branch I need:
+
+git checkout 48398-deploy-bpmn
+
+git cherry-pick 5c8764b
+
+
+
+
