@@ -1,0 +1,10 @@
+	private static string GetFormattedPrintingDatetime(string timezone)
+        {
+            // Ensure that the given date and time is not a specific kind. Used for setting a time zone manually.
+            var currentTime = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified);
+            var systemTimezone = TimeZoneInfo.FindSystemTimeZoneById(timezone);
+            var convertedTime = TimeZoneInfo.ConvertTime(currentTime, systemTimezone);
+            var formattedTime = convertedTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture);
+
+            return formattedTime;
+        }
