@@ -25,3 +25,4 @@ public void SaveDataWithTransaction(ConnectionData connectionData, Guid productI
 
 // see: https://dzfweb.gitbooks.io/microsoft-microservices-book/content/implement-resilient-applications/implement-resilient-entity-framework-core-sql-connections.html
 
+// see https://docs.microsoft.com/en-us/ef/core/miscellaneous/connection-resiliency
