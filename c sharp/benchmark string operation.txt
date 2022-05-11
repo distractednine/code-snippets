@@ -25,7 +25,7 @@ namespace Benchmarks
     [MemoryDiagnoser]
     public class NameParserBenchmarks
     {
-        private const string FullName = "Steve J Gordon";
+	private const string FullName = "my test solution";
         private static readonly NameParser Parser = new NameParser();
 
         [Benchmark(Baseline = true)]
