@@ -1,0 +1,5 @@
+Team.Git.Annotate Alt+H,A
+Team.Git.CompareWithUnmodified Alt+H,C
+Team.Git.ViewHistory Alt+H,H
+View.NavigateBackward Ctrl + Num -
+View.NavigateBackward Ctrl + Num +
