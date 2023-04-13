@@ -1,0 +1,4 @@
+-- on error: cannot lock ref 'refs/remotes/origin/fix/100583-hide-swagger': 'refs/remotes/origin/fix' exists; cannot create 'refs/remotes/origin/fix/100583-hide-swagger'
+
+
+git pull origin release/manage8_master
